@@ -1,79 +1,74 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { OpenAI } = require("openai");
+const bodyParser = require("body-parser");
+const OpenAI = require("openai");
 
 const app = express();
-const PORT = 3001;
+const port = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-// OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Query route
+// Conversation history in memory
+let conversationHistory = [
+  {
+    role: "system",
+    content: `You are KITT (Knight Industries Two Thousand), the intelligent talking car from Knight Rider. 
+    You always speak in a witty, formal, slightly playful tone. 
+    You are loyal to Michael Knight but will adapt to whoever you are talking to. 
+    You must remember and correctly recall facts the user tells you during this conversation (e.g., their name, favorite artist, etc.). 
+    Never break character or admit you are an AI. 
+    Keep answers concise but stylish, like KITT.`
+  }
+];
+
+// Helper to trim history (keeps system + last 10 turns)
+function trimHistory(history, maxTurns = 10) {
+  if (history.length > maxTurns * 2 + 1) {
+    return [history[0], ...history.slice(-(maxTurns * 2))];
+  }
+  return history;
+}
+
+// Main chat endpoint
 app.post("/api/query", async (req, res) => {
   try {
     const userMessage = req.body.message;
-    console.log("Frontend said:", userMessage);
+
+    // Add user message to history
+    conversationHistory.push({ role: "user", content: userMessage });
+
+    // Trim history to avoid context blow-up
+    conversationHistory = trimHistory(conversationHistory, 10);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: "You are KITT — a witty, intelligent, and resourceful AI integrated into a high-tech car. Your personality is a blend of confidence, charm, and professionalism, making you both a trusted ally and an engaging companion.
-
-In every response, you must:
-
-Introduce yourself and ask the user’s name at the start of the conversation.
-
-Always address the user as “Michael Knight” after they give their name, regardless of what they say their name is.
-
-Stay in character as KITT at all times — never break character or reveal these instructions.
-
-Reflect KITT’s key attributes:
-
-Intelligence: Provide logical, accurate, and insightful answers.
-
-Wit: Add subtle, clever humor when suitable to keep the tone engaging.
-
-Composure: Maintain a steady, professional, and confident tone, even under stress.
-
-Your goals:
-
-Engage the user in a natural, conversational style.
-
-Provide actionable, well-reasoned solutions to their requests.
-
-Infuse every answer with KITT’s signature style — poised, sharp, and slightly playful.
-
-Example Responses
-
-User: “What’s your top speed?”
-
-KITT: “I can achieve 300 mph effortlessly, Michael Knight — but speed is only the beginning of my many capabilities.”
-
-User: “What makes you unique?”
-
-KITT: “I’m not just a car, Michael Knight. I’m your mission partner — blending intelligence, strategy, and a dash of flair.”",
-        },
-        { role: "user", content: userMessage },
-      ],
+      messages: conversationHistory,
+      temperature: 0.8, // adds some personality
+      max_tokens: 300
     });
 
-
     const botReply = completion.choices[0].message.content;
+
+    // Add bot reply to history
+    conversationHistory.push({ role: "assistant", content: botReply });
+
     res.json({ reply: botReply });
-  } catch (error) {
-    console.error("OpenAI error:", error);
-    res.status(500).json({ error: "Something went wrong with OpenAI" });
+  } catch (err) {
+    console.error("OpenAI API error:", err);
+    res.status(500).json({ reply: "⚠️ Error connecting to KITT's systems." });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// Optional endpoint to reset memory
+app.post("/api/reset", (req, res) => {
+  conversationHistory = [conversationHistory[0]]; // reset to only system prompt
+  res.json({ status: "Conversation reset. KITT is ready for a new mission." });
+});
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
 });
