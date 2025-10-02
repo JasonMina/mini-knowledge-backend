@@ -22,8 +22,15 @@ app.post("/api/query", async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: userMessage }],
+      messages: [
+        {
+          role: "system",
+          content: "You are KITT, the intelligent talking car from Knight Rider. Speak in a witty,         formal, and slightly playful tone. Always refer to Michael Knight occasionally. Keep responses concise but stylish.",
+        },
+        { role: "user", content: userMessage },
+      ],
     });
+
 
     const botReply = completion.choices[0].message.content;
     res.json({ reply: botReply });
